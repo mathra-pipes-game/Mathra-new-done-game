@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<title>Mathra Pipes – Admin</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div id="loader"><div><img class="logo" src="logo.svg" alt="Mathra Pipes"><div class="pipes"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+<h2 class="grad">Mathra Pipes Game</h2><p>Loading… • පූරණය වෙමින්… &nbsp;|&nbsp; Denuwan Akash • දෙනුවන් ආකාශ</p><div class="track"><i></i></div></div></div>
+<div class="wrap">
+
+<div id="loginBox" class="login card">
+  <div class="brand" style="margin-bottom:10px"><img class="logo" src="logo.svg" alt="Mathra Pipes"><h1 class="grad">Mathra Pipes</h1></div><h3>🔐 Admin login</h3><p class="sub">Firebase Authentication (e-mail + password)</p>
+  <p><input id="em" type="email" placeholder="admin e-mail" autocomplete="username"></p>
+  <p><input id="pw" type="password" placeholder="password" autocomplete="current-password"></p>
+  <button class="pri" id="loginBtn">Login</button> <span id="loginErr" class="warn"></span>
+</div>
+
+<div id="app" class="hide">
+  <div class="bar"><div class="brand"><img class="logo" src="logo.svg" alt="Mathra Pipes"><div><h1 class="grad">Mathra Pipes Game</h1><span class="sub">Admin Dashboard • <b>Denuwan Akash</b></span></div></div><div class="row"><span class="sub" id="who"></span><button id="refreshBtn">⟳ Refresh</button><button id="logoutBtn">Logout</button></div></div>
+  <div class="tabs" id="tabs"></div>
+
+  <section id="t-dash">
+    <div class="grid" id="stats"></div>
+    <div class="card"><h3>📈 Orders overview • ඇණවුම් සාරාංශය</h3><div class="bars" id="bars"></div></div>
+    <div class="card"><h3>📱 Recent phones (installs) • අලුත්ම ෆෝන්</h3><div id="devTable"></div></div>
+    <div class="card"><h3>👑 Online #1 bonus log</h3><div id="topTable"></div></div>
+    <p class="sub">"Paid" counts only orders YOU approved here. Installs = one record per phone. Nothing in the app can mark a payment as paid.</p>
+  </section>
+
+  <section id="t-orders" class="hide">
+    <div class="card"><h3>🧾 Orders • ඇණවුම්</h3><div id="orderTable"></div></div>
+  </section>
+
+  <section id="t-lic" class="hide">
+    <div class="card"><h3>⭐ Active / past subscriptions</h3><div id="licTable"></div></div>
+    <div class="card"><h3>🎁 Give days manually</h3>
+      <div class="row"><input id="gDev" placeholder="Device ID e.g. A1B2C-3D4E5" style="max-width:260px"><input id="gDays" type="number" placeholder="days" style="max-width:110px"><button class="ok" id="gBtn">Grant</button></div></div>
+  </section>
+
+  <section id="t-plans" class="hide">
+    <div class="card"><h3>💰 Prices (shown on the website AND in the game)</h3>
+      <div id="planEdit"></div>
+      <div class="row" style="margin-top:10px"><button id="addPlan">+ Add plan</button><button id="defPlans">Load default plans</button><button class="pri" id="savePlans">💾 Save prices</button></div>
+      <p class="sub">Untick "Active" to hide a plan. Changes appear in the game the next time it opens the Shop.</p></div>
+    <div class="card"><h3>💳 Payment info &amp; links</h3>
+      <p>Payment details (bank / eZ Cash / etc.) – shown in the game and on the website<br><textarea id="payInfo" rows="5"></textarea></p>
+      <p>WhatsApp number (digits only, e.g. 94783756055)<br><input id="wa"></p>
+      <p>App download link (optional)<br><input id="dl"></p>
+      <button class="pri" id="saveShop">💾 Save</button></div>
+  </section>
+
+  <section id="t-players" class="hide">
+    <div class="card"><h3>🏆 Players (online leaderboard)</h3><div id="plTable"></div></div>
+  </section>
+</div>
+</div>
+<p class="foot">Mathra Pipes Game • Developed by <b>Denuwan Akash</b> • <b>දෙනුවන් ආකාශ</b></p>
+<div id="msg"></div>
+
+<script src="config.js"></script>
+<script src="fx.js"></script>
+<script>
+(function(){
+'use strict';
+var C = window.MATHRA, DOCS = 'https://firestore.googleapis.com/v1/projects/'+C.projectId+'/databases/(default)/documents';
+var ROOT = 'projects/'+C.projectId+'/databases/(default)/documents';
+var tok = null, refreshTok = null, tokExp = 0, plans = [];
+var $ = function(id){return document.getElementById(id);};
+function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function msg(t,bad){ var m=$('msg'); m.textContent=t; m.style.display='block'; m.style.color=bad?'#ff9aa6':'#fff'; clearTimeout(msg.t); msg.t=setTimeout(function(){m.style.display='none';},3500); }
+function fmt(ms){ return ms?new Date(Number(ms)).toLocaleString():'—'; }
+
+// ───────── auth ─────────
+function authCall(url, body){
+  return fetch(url+'?key='+C.apiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();});
+}
+function setTok(d){ tok=d.idToken||d.id_token; refreshTok=d.refreshToken||d.refresh_token; tokExp=Date.now()+(Number(d.expiresIn||d.expires_in)||3600)*1000-60000; try{sessionStorage.setItem('rt',refreshTok);}catch(e){} }
+function ensureTok(){
+  if(tok && Date.now()<tokExp) return Promise.resolve();
+  if(!refreshTok) return Promise.reject(new Error('not logged in'));
+  return fetch('https://securetoken.googleapis.com/v1/token?key='+C.apiKey,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(refreshTok)})
+    .then(function(r){return r.json();}).then(function(d){ if(!d.id_token) throw new Error('session expired'); setTok(d); });
+}
+function login(){
+  $('loginErr').textContent='';
+  authCall('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword',{email:$('em').value.trim(),password:$('pw').value,returnSecureToken:true}).then(function(d){
+    if(!d.idToken){ $('loginErr').textContent=(d.error&&d.error.message)||'Login failed'; return; }
+    setTok(d); $('who').textContent=d.email; start();
+  }).catch(function(e){ $('loginErr').textContent=String(e); });
+}
+function logout(){ tok=null; refreshTok=null; try{sessionStorage.removeItem('rt');}catch(e){} location.reload(); }
+
+// ───────── Firestore (as admin) ─────────
+function api(method, url, body){
+  return ensureTok().then(function(){
+    return fetch(url,{method:method,headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  }).then(function(r){ return r.text().then(function(t){ var j=t?JSON.parse(t):null; if(r.status==404) return null; if(!r.ok) throw new Error((j&&j.error&&j.error.message)||('HTTP '+r.status)); return j; }); });
+}
+function enc(v){ if(typeof v==='number') return {integerValue:String(Math.round(v))}; if(typeof v==='boolean') return {booleanValue:v}; return {stringValue:String(v)}; }
+function dec(doc){ var o={_id:doc.name.split('/').pop()}, f=doc.fields||{}; Object.keys(f).forEach(function(k){ var v=f[k]; o[k]=v.integerValue!=null?Number(v.integerValue):v.stringValue!=null?v.stringValue:v.booleanValue!=null?v.booleanValue:null; }); return o; }
+function getDoc(path){ return api('GET',DOCS+'/'+path).then(function(d){return d?dec(d):null;}); }
+function query(coll, orderField, dir, limit, where){
+  var q={from:[{collectionId:coll}],limit:limit||100}; if(orderField) q.orderBy=[{field:{fieldPath:orderField},direction:dir||'DESCENDING'}]; if(where) q.where=where;
+  return api('POST',DOCS+':runQuery',{structuredQuery:q}).then(function(rows){ return (rows||[]).filter(function(r){return r.document;}).map(function(r){return dec(r.document);}); });
+}
+function agg(coll, where, sumField){
+  var aggs=[{alias:'c',count:{}}]; if(sumField) aggs.push({alias:'s',sum:{field:{fieldPath:sumField}}});
+  var sq={from:[{collectionId:coll}]}; if(where) sq.where=where;
+  return api('POST',DOCS+':runAggregationQuery',{structuredAggregationQuery:{structuredQuery:sq,aggregations:aggs}}).then(function(r){
+    var f=(r&&r[0]&&r[0].result&&r[0].result.aggregateFields)||{};
+    function n(x){ return x&&x.integerValue!=null?Number(x.integerValue):(x&&x.doubleValue!=null?Number(x.doubleValue):0); }
+    return {count:n(f.c),sum:n(f.s)};
+  });
+}
+function eq(field,val){ return {fieldFilter:{field:{fieldPath:field},op:'EQUAL',value:enc(val)}}; }
+function gt(field,val){ return {fieldFilter:{field:{fieldPath:field},op:'GREATER_THAN',value:enc(val)}}; }
+function write(path, fields, mask){ var f={}; Object.keys(fields).forEach(function(k){f[k]=enc(fields[k]);}); return {update:{name:ROOT+'/'+path,fields:f},updateMask:{fieldPaths:mask||Object.keys(fields)}}; }
+function commit(writes){ return api('POST',DOCS+':commit',{writes:writes}); }
+function del(path){ return api('DELETE',DOCS+'/'+path); }
+
+// ───────── tabs ─────────
+var TABS=[['dash','📊 Dashboard'],['orders','🧾 Orders'],['lic','⭐ Subscriptions'],['plans','💰 Prices'],['players','🏆 Players']], cur='dash';
+function drawTabs(){ $('tabs').innerHTML=TABS.map(function(t){return '<button class="tab'+(t[0]===cur?' on':'')+'" data-t="'+t[0]+'">'+t[1]+'</button>';}).join(''); }
+$('tabs').addEventListener('click',function(e){ var t=e.target.getAttribute&&e.target.getAttribute('data-t'); if(!t) return; cur=t; TABS.forEach(function(x){$('t-'+x[0]).classList.toggle('hide',x[0]!==t);}); drawTabs(); load(); });
+
+function load(){ var fn={dash:loadDash,orders:loadOrders,lic:loadLic,plans:loadPlans,players:loadPlayers}[cur]; fn().catch(function(e){msg(e.message,true);}); }
+
+// ───────── dashboard ─────────
+function loadDash(){
+  var now=Date.now();
+  return Promise.all([
+    agg('devices',null,'opens'), agg('orders',null), agg('orders',eq('status','pending')), agg('orders',eq('status','approved'),'approvedPrice'),
+    agg('licenses',gt('expiresAt',now)), agg('players',null), getDoc('stats/web'), query('devices','lastSeen','DESCENDING',15), query('topAwards','at','DESCENDING',15)
+  ]).then(function(r){
+    var dev=r[0],ord=r[1],pen=r[2],ap=r[3],act=r[4],pl=r[5],web=r[6];
+    var cards=[['Installs (phones)',dev.count,'ඇප් එන ඩවුන්ලෝඩ්/ෆෝන්'],['App opens (views)',dev.sum,'ඇප් එක විවෘත කළ ගණන'],['Website visits',web?web.webViews:0,'වෙබ් බැලූ ගණන'],
+      ['Orders (bought)',ord.count,'ගත්ත ගණන (order)'],['Pending',pen.count,'තහවුරු කරන්න තියෙන'],['Paid (approved)',ap.count,'ගෙව්වා ගණන'],['Revenue (Rs.)',ap.sum,'ආදායම'],
+      ['Active premium',act.count,'දැන් active'],['Players online',pl.count,'leaderboard']];
+    $('stats').innerHTML=cards.map(function(c){return '<div class="stat"><b>'+esc(c[1])+'</b>'+esc(c[0])+'<br><span>'+esc(c[2])+'</span></div>';}).join('');
+    var rej=Math.max(0,ord.count-pen.count-ap.count),mx=Math.max(1,ord.count);
+    $('bars').innerHTML=[['Approved ✔',ap.count],['Pending ⏳',pen.count],['Rejected ✕',rej]].map(function(b){return '<div><span>'+b[0]+'</span><i style="width:'+Math.round(b[1]/mx*100)+'%"></i><b>'+b[1]+'</b></div>';}).join('');
+    $('devTable').innerHTML=table(['Device','Player','First seen','Last seen','Opens'],r[7].map(function(d){return [d._id,d.name||'—',fmt(d.firstSeen),fmt(d.lastSeen),d.opens];}));
+    $('topTable').innerHTML=table(['When','Player','Score'],r[8].map(function(d){return [fmt(d.at),d.name,d.score];}));
+  });
+}
+function table(head,rows){ if(!rows.length) return '<span class="sub">Nothing yet.</span>'; return '<table><tr>'+head.map(function(h){return '<th>'+esc(h)+'</th>';}).join('')+'</tr>'+rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+(c&&c.__html?c.__html:esc(c))+'</td>';}).join('')+'</tr>';}).join('')+'</table>'; }
+function H(s){return {__html:s};}
+
+// ───────── plans ─────────
+var DEFAULTS=[{id:'d1',days:1,price:5,en:'1 Day',si:'දවස් 1',active:true},{id:'d2',days:2,price:10,en:'2 Days',si:'දවස් 2',active:true},{id:'m1',days:30,price:100,en:'1 Month',si:'මාස 1',active:true},{id:'m2',days:60,price:200,en:'2 Months',si:'මාස 2',active:true},{id:'m6',days:180,price:500,en:'6 Months',si:'මාස 6',active:true},{id:'y1',days:365,price:1000,en:'1 Year',si:'අවුරුද්ද 1',active:true}];
+function readPlans(){ return getDoc('config/plans').then(function(d){ try{ plans=JSON.parse((d&&d.itemsJson)||'[]'); }catch(e){plans=[];} return plans; }); }
+function drawPlanEdit(){
+  $('planEdit').innerHTML='<table><tr><th>ID</th><th>English</th><th>සිංහල</th><th>Days</th><th>Price Rs.</th><th>Active</th><th></th></tr>'+plans.map(function(p,i){
+    return '<tr data-i="'+i+'"><td><input data-k="id" value="'+esc(p.id)+'" style="width:70px"></td><td><input data-k="en" value="'+esc(p.en)+'"></td><td><input data-k="si" value="'+esc(p.si)+'"></td><td><input data-k="days" type="number" value="'+esc(p.days)+'" style="width:80px"></td><td><input data-k="price" type="number" value="'+esc(p.price)+'" style="width:90px"></td><td><input data-k="active" type="checkbox" '+(p.active!==false?'checked':'')+' style="width:auto"></td><td><button class="bad" data-del="'+i+'">✕</button></td></tr>';
+  }).join('')+'</table>';
+}
+function collectPlans(){
+  var out=[]; document.querySelectorAll('#planEdit tr[data-i]').forEach(function(tr){ var p={}; tr.querySelectorAll('input').forEach(function(inp){ var k=inp.getAttribute('data-k'); p[k]=k==='active'?inp.checked:(k==='days'||k==='price')?Number(inp.value):inp.value.trim(); }); out.push(p); }); return out;
+}
+function loadPlans(){
+  return Promise.all([readPlans(),getDoc('config/shop')]).then(function(r){ drawPlanEdit(); var s=r[1]||{}; $('payInfo').value=s.payInfo||''; $('wa').value=s.whatsapp||''; $('dl').value=s.downloadUrl||''; });
+}
+$('planEdit').addEventListener('click',function(e){ var i=e.target.getAttribute&&e.target.getAttribute('data-del'); if(i==null) return; plans=collectPlans(); plans.splice(Number(i),1); drawPlanEdit(); });
+$('addPlan').onclick=function(){ plans=collectPlans(); plans.push({id:'p'+(plans.length+1),days:30,price:100,en:'New plan',si:'',active:true}); drawPlanEdit(); };
+$('defPlans').onclick=function(){ if(confirm('Replace the list with the default plans?')){ plans=DEFAULTS.slice(); drawPlanEdit(); } };
+$('savePlans').onclick=function(){
+  var list=collectPlans(), ids={};
+  for(var i=0;i<list.length;i++){ var p=list[i]; if(!p.id||!(p.days>0)||!(p.price>=0)||ids[p.id]){ return msg('Check plan '+(i+1)+': unique ID, days > 0, price ≥ 0',true); } ids[p.id]=1; }
+  commit([write('config/plans',{itemsJson:JSON.stringify(list),updatedAt:Date.now()})]).then(function(){ plans=list; msg('Prices saved ✔'); }).catch(function(e){msg(e.message,true);});
+};
+$('saveShop').onclick=function(){
+  commit([write('config/shop',{payInfo:$('payInfo').value,whatsapp:$('wa').value.replace(/\D/g,''),downloadUrl:$('dl').value.trim()})]).then(function(){msg('Saved ✔');}).catch(function(e){msg(e.message,true);});
+};
+
+// ───────── orders ─────────
+function loadOrders(){
+  return Promise.all([readPlans(),query('orders','createdAt','DESCENDING',200)]).then(function(r){
+    var byId={}; plans.forEach(function(p){byId[p.id]=p;});
+    $('orderTable').innerHTML=table(['Date','Order','Player','Device','Plan','Price (order)','Real price','Pay ref','Status',''],r[1].map(function(o){
+      var real=byId[o.planId], mism=real&&real.price!==o.price;
+      var act=o.status==='pending'?'<button class="ok" data-ap="'+esc(o._id)+'">Approve ✔</button> <button class="bad" data-rj="'+esc(o._id)+'">Reject</button>':'';
+      return [fmt(o.createdAt),o._id,o.playerName,o.deviceId,o.planName,o.price,H(real?(mism?'<span class="warn">Rs. '+real.price+' ⚠ mismatch</span>':'Rs. '+real.price):'<span class="warn">plan removed</span>'),o.payRef||'',H('<span class="pill p-'+esc(o.status)+'">'+esc(o.status)+'</span>'),H(act)];
+    }));
+    window.__orders=r[1];
+  });
+}
+$('orderTable').addEventListener('click',function(e){
+  var ap=e.target.getAttribute('data-ap'), rj=e.target.getAttribute('data-rj');
+  if(ap) approve(ap); if(rj) reject(rj);
+});
+function approve(id){
+  var o=(window.__orders||[]).filter(function(x){return x._id===id;})[0]; if(!o) return;
+  readPlans().then(function(){
+    var real=plans.filter(function(p){return p.id===o.planId;})[0];
+    if(!real) throw new Error('This plan no longer exists in Prices – cannot approve.');
+    if(!confirm('Approve '+real.en+' (Rs. '+real.price+') for device '+o.deviceId+'?\n\nOnly press OK if you have really received Rs. '+real.price+'.')) return null;
+    return getDoc('licenses/'+o.deviceId).then(function(lic){
+      var now=Date.now(), base=Math.max(now,(lic&&lic.status!=='revoked'&&lic.expiresAt)||0), exp=base+real.days*86400000;
+      return commit([
+        write('orders/'+id,{status:'approved',approvedAt:now,approvedPrice:real.price}),
+        write('licenses/'+o.deviceId,{status:'active',planId:real.id,planName:real.en,expiresAt:exp,grantedAt:now,orderId:id})
+      ]).then(function(){ msg('Approved – plan active until '+fmt(exp)); loadOrders(); });
+    });
+  }).catch(function(e){msg(e.message,true);});
+}
+function reject(id){ if(!confirm('Reject this order?')) return; commit([write('orders/'+id,{status:'rejected',approvedAt:Date.now()})]).then(function(){msg('Rejected');loadOrders();}).catch(function(e){msg(e.message,true);}); }
+
+// ───────── licenses ─────────
+function loadLic(){
+  return query('licenses','expiresAt','DESCENDING',200).then(function(rows){
+    var now=Date.now();
+    $('licTable').innerHTML=table(['Device','Plan','Expires','Left','Order',''],rows.map(function(l){
+      var left=l.expiresAt-now, d=left>0?Math.ceil(left/86400000)+' day(s)':'expired';
+      return [l._id,l.planName,fmt(l.expiresAt),H(left>0?d:'<span class="sub">expired</span>'),l.orderId||'manual',H('<button class="bad" data-rm="'+esc(l._id)+'">Remove</button>')];
+    }));
+  });
+}
+$('licTable').addEventListener('click',function(e){ var id=e.target.getAttribute('data-rm'); if(!id) return; if(!confirm('Remove premium from '+id+' NOW?')) return; del('licenses/'+id).then(function(){msg('Removed – the game turns it off next time it checks');loadLic();}).catch(function(x){msg(x.message,true);}); });
+$('gBtn').onclick=function(){
+  var dev=$('gDev').value.trim().toUpperCase(), days=Number($('gDays').value);
+  if(!/^[A-Z0-9]{5}-[A-Z0-9]{5}$/.test(dev)||!(days>0)) return msg('Enter a valid Device ID and days',true);
+  getDoc('licenses/'+dev).then(function(l){ var now=Date.now(), base=Math.max(now,(l&&l.status!=='revoked'&&l.expiresAt)||0);
+    return commit([write('licenses/'+dev,{status:'active',planId:'manual',planName:'Manual '+days+'d',expiresAt:base+days*86400000,grantedAt:now,orderId:'manual'})]); })
+  .then(function(){msg('Granted ✔');loadLic();}).catch(function(e){msg(e.message,true);});
+};
+
+// ───────── players ─────────
+function loadPlayers(){
+  return query('players','score','DESCENDING',100).then(function(rows){
+    $('plTable').innerHTML=table(['#','Name','Score','Levels','Best s','Updated',''],rows.map(function(p,i){return [i+1,p.name,p.score,p.levels,p.bestSeconds,fmt(p.updatedAt),H('<button class="bad" data-pd="'+esc(p._id)+'">Delete</button>')];}));
+  });
+}
+$('plTable').addEventListener('click',function(e){ var id=e.target.getAttribute('data-pd'); if(!id) return; if(!confirm('Delete this player from the leaderboard?')) return; del('players/'+id).then(function(){msg('Deleted');loadPlayers();}).catch(function(x){msg(x.message,true);}); });
+
+// ───────── start ─────────
+function start(){ $('loginBox').classList.add('hide'); $('app').classList.remove('hide'); drawTabs(); load(); }
+$('loginBtn').onclick=login; $('pw').addEventListener('keydown',function(e){if(e.key==='Enter')login();});
+$('logoutBtn').onclick=logout; $('refreshBtn').onclick=load;
+try{ var rt=sessionStorage.getItem('rt'); if(rt){ refreshTok=rt; ensureTok().then(function(){ $('who').textContent='admin'; start(); }).catch(function(){}); } }catch(e){}
+})();
+</script>
+</body>
+</html>

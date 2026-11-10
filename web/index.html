@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<title>Mathra Pipes Game – Premium</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div id="loader"><div><img class="logo" src="logo.svg" alt="Mathra Pipes"><div class="pipes"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+<h2 class="grad">Mathra Pipes Game</h2><p>Loading… • පූරණය වෙමින්… &nbsp;|&nbsp; Denuwan Akash • දෙනුවන් ආකාශ</p><div class="track"><i></i></div></div></div>
+<div class="wrap">
+  <div class="card hero tilt-scene">
+    <img class="logo" src="logo.svg" alt="Mathra Pipes">
+    <div>
+      <h1 class="grad">Mathra Pipes Game</h1>
+      <p class="sub" style="margin:0">Connect the pipes, flow the fun • නල සම්බන්ධ කරන්න, විනෝද වෙන්න</p>
+      <p class="sub" style="margin:6px 0 0">Unlimited hints • අසීමිත ඉඟි — cheap plans from 1 day to 1 year</p>
+      <span class="dev">Developed by <b>Denuwan Akash</b> • <b>දෙනුවන් ආකාශ</b></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">💰 Prices • මිල ගණන්</h3>
+    <div class="plans" id="plans"><span class="sub">Loading…</span></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">How to buy • මිලදී ගන්නේ මෙහෙමයි</h3>
+    <ol>
+      <li>Open the game → <b>Shop</b> → choose a plan → <b>Order</b>.<br><small class="sub">ගේම් එකේ Shop එකට ගිහින් plan එකක් තෝරලා Order කරන්න.</small></li>
+      <li>Pay the plan price and send the Order code on WhatsApp.<br><small class="sub">මිල ගෙවලා Order code එක WhatsApp කරන්න.</small></li>
+      <li>The owner checks the payment here on the website and approves it. Your plan starts automatically and ends automatically.<br><small class="sub">අයිතිකරු ගෙවීම පරීක්ෂා කරලා approve කළාම plan එක ඉබේම පටන් අරන් ඉබේම අවසන් වෙනවා.</small></li>
+    </ol>
+  </div>
+
+  <div class="card" id="payBox" style="display:none">
+    <h3 style="margin-top:0">💳 Payment details • ගෙවීම් විස්තර</h3>
+    <pre id="pay"></pre>
+    <div id="links"></div>
+  </div>
+
+  <p class="foot">Activation happens only through this website – nothing can be unlocked by a code or a hack inside the app.<br>© Mathra Pipes Game • Made by <b>Denuwan Akash</b> • <b>දෙනුවන් ආකාශ</b></p>
+</div>
+<script src="config.js"></script>
+<script src="fx.js"></script>
+<script>
+(function(){
+  var C = window.MATHRA, base = 'https://firestore.googleapis.com/v1/projects/'+C.projectId+'/databases/(default)/documents';
+  function f(path, opt){ return fetch(base+'/'+path+(path.indexOf('?')>-1?'&':'?')+'key='+C.apiKey, opt).then(function(r){return r.status==404?null:r.json();}); }
+  function s(o,k){ return o && o.fields && o.fields[k] && o.fields[k].stringValue || ''; }
+
+  // count one visit per browser session
+  try { if(!sessionStorage.getItem('v')) { sessionStorage.setItem('v','1');
+    fetch(base+':commit?key='+C.apiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({writes:[{transform:{document:'projects/'+C.projectId+'/databases/(default)/documents/stats/web',fieldTransforms:[{fieldPath:'webViews',increment:{integerValue:'1'}}]}}]})}).catch(function(){});
+  } } catch(e){}
+
+  f('config/plans').then(function(d){
+    var el=document.getElementById('plans'), items=[];
+    try{ items=JSON.parse(s(d,'itemsJson')||'[]'); }catch(e){}
+    items=items.filter(function(p){return p.active!==false;});
+    if(!items.length){ el.innerHTML='<span class="sub">Prices coming soon.</span>'; return; }
+    el.innerHTML=items.map(function(p){
+      return '<div class="plan"><b>'+esc(p.en)+'</b><small>'+esc(p.si||'')+'</small><div class="p">Rs. '+Number(p.price)+'</div></div>';
+    }).join('');
+  }).catch(function(){ document.getElementById('plans').textContent='Could not load prices.'; });
+
+  f('config/shop').then(function(d){
+    var pay=s(d,'payInfo'), wa=s(d,'whatsapp'), dl=s(d,'downloadUrl'), html='';
+    if(wa) html+='<a class="btn wa" href="https://wa.me/'+encodeURIComponent(wa)+'">💬 WhatsApp +'+esc(wa)+'</a>';
+    if(dl) html+='<a class="btn" href="'+esc(dl)+'">⬇ Download the app</a>';
+    if(pay||html){ document.getElementById('payBox').style.display='block'; document.getElementById('pay').textContent=pay; document.getElementById('links').innerHTML=html; }
+  }).catch(function(){});
+
+  function esc(t){ return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+})();
+</script>
+</body>
+</html>

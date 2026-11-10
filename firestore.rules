@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // !!! Put YOUR admin e-mail (the Firebase Authentication user you create) here !!!
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.token.email == 'CHANGE_ME_ADMIN_EMAIL@example.com';
+    }
+
+    // Online leaderboard (players can only write their own safe fields)
+    match /players/{id} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(
+            ['name','score','levels','bestSeconds','updatedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 18
+          && request.resource.data.score is int
+          && request.resource.data.score < 1000000;
+      allow delete: if isAdmin();          // remove cheaters from the web panel
+    }
+
+    // Prices + payment info: everyone reads, only the owner edits.
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Subscriptions: ONLY the owner can create / extend / delete them.
+    // A phone can read only its own document (it must know the Device ID).
+    match /licenses/{id} {
+      allow get: if true;
+      allow list, write: if isAdmin();
+    }
+
+    // Orders: a phone may create a PENDING order. Only the owner can approve.
+    match /orders/{id} {
+      allow get: if true;
+      allow list, update, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(
+            ['deviceId','playerName','planId','planName','days','price','payRef','status','createdAt'])
+          && request.resource.data.status == 'pending'
+          && request.resource.data.playerName.size() <= 18
+          && request.resource.data.payRef.size() <= 60;
+    }
+
+    // One document per installed phone (= install / open counter).
+    match /devices/{id} {
+      allow get: if true;
+      allow list, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(
+            ['firstSeen','lastSeen','opens','name'])
+          && request.resource.data.opens == 1;
+      allow update: if request.resource.data.keys().hasOnly(
+            ['firstSeen','lastSeen','opens','name'])
+          && request.resource.data.firstSeen == resource.data.firstSeen
+          && request.resource.data.opens >= resource.data.opens
+          && request.resource.data.opens <= resource.data.opens + 1;
+    }
+
+    // Current #1 of the leaderboard (for the "+3 hints for a new #1" bonus).
+    match /meta/{doc} {
+      allow get: if true;
+      allow delete: if isAdmin();
+      allow create, update: if request.resource.data.keys().hasOnly(
+            ['holder','name','updatedAt'])
+          && request.resource.data.holder is string;
+    }
+    match /topAwards/{id} {
+      allow list, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(
+            ['holder','name','score','at']);
+    }
+
+    // Website visit counter (+1 per visit only).
+    match /stats/{doc} {
+      allow get: if true;
+      allow list, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(['webViews'])
+          && request.resource.data.webViews == 1;
+      allow update: if request.resource.data.keys().hasOnly(['webViews'])
+          && request.resource.data.webViews == resource.data.webViews + 1;
+    }
+  }
+}
