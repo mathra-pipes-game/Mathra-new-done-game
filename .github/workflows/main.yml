@@ -3,6 +3,9 @@ name: Build APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,20 +22,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Find project folder
-        id: proj
-        run: |
-          FILE=$(find . -name pubspec.yaml -not -path '*/.*' | awk '{print length, $0}' | sort -n | head -n 1 | cut -d' ' -f2-)
-          DIR=$(dirname "$FILE")
-          echo "Project folder: $DIR"
-          echo "dir=$DIR" >> $GITHUB_OUTPUT
-
       - name: Get packages
-        working-directory: ${{ steps.proj.outputs.dir }}
         run: flutter pub get
 
       - name: Build APK (with retries)
-        working-directory: ${{ steps.proj.outputs.dir }}
         run: |
           for attempt in 1 2 3; do
             if flutter build apk --release; then
@@ -43,7 +36,24 @@ jobs:
           done
           exit 1
 
+      - name: Rename APK
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk mathra-pipes.apk
+          ls -lh mathra-pipes.apk
+          sha256sum mathra-pipes.apk
+
+      # APK එක zip නැතිව කෙලින්ම download කරන්න පුළුවන් Release එකක් හදනවා
+      - name: Create GitHub Release with APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" mathra-pipes.apk \
+            --title "Mathra Pipes build ${{ github.run_number }}" \
+            --notes "Direct APK download (no zip). Commit: ${{ github.sha }}"
+
+      # Backup විදිහට artifact එකත් තියාගන්නවා
       - uses: actions/upload-artifact@v4
         with:
           name: mathra-pipes-apk
-          path: ${{ steps.proj.outputs.dir }}/build/app/outputs/flutter-apk/app-release.apk
+          path: mathra-pipes.apk
